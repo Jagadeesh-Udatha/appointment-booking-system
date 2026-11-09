@@ -8,6 +8,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -17,7 +21,11 @@ import java.util.UUID;
 @Service
 public class NotificationService {
 
-    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEE d MMM, h:mm a");
+    // built by hand so the text is the same on every machine, whatever the JVM locale is
+    private static final DateTimeFormatter WHEN = new DateTimeFormatterBuilder()
+            .appendPattern("EEE d MMM, h:mm ")
+            .appendText(ChronoField.AMPM_OF_DAY, Map.of(0L, "am", 1L, "pm"))
+            .toFormatter(Locale.ENGLISH);
 
     private final NotificationLogRepository logs;
     private final MessageSender sender;
