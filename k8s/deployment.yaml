@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: booking
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: booking-config
+  namespace: booking
+data:
+  DB_URL: "jdbc:mysql://booking-db.xxxxxx.ap-south-1.rds.amazonaws.com:3306/booking"
+  KAFKA_BOOTSTRAP: "b-1.booking-msk.xxxxxx.kafka.ap-south-1.amazonaws.com:9092"
+---
+# Example only; in the cluster this is synced from AWS Secrets Manager.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: booking-secrets
+  namespace: booking
+type: Opaque
+stringData:
+  JWT_SECRET: "replace-with-a-32-byte-random-secret-value"
+  DB_USER: "booking"
+  DB_PASSWORD: "replace-me"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-api
+  namespace: booking
+  labels: { app: booking-api }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: booking-api }
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: booking-api }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/jagadeesh-udatha/appointment-booking-system:1.0.0
+          ports: [{ containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: booking-config }
+            - secretRef: { name: booking-secrets }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: 8080 }
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: 8080 }
+            initialDelaySeconds: 40
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-api
+  namespace: booking
+spec:
+  selector: { app: booking-api }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: booking-api
+  namespace: booking
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: booking-api }
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: booking-api
+  namespace: booking
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: booking-api }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: booking-api
+  namespace: booking
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: booking-api, port: { number: 80 } }
