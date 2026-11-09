@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:booking;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;LOCK_TIMEOUT=10000;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 40
+  kafka:
+    listener:
+      auto-startup: false
+booking:
+  outbox:
+    relay-enabled: false
+  jobs:
+    hold-expiry-ms: 3600000
+    reminder-ms: 3600000
+logging:
+  level:
+    root: WARN
